@@ -1,0 +1,410 @@
+---
+title: 'Hippocampal dependence of value-based decisions: Statistical Analyses'
+output:
+github_document:
+toc: yes
+toc_float: yes
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(lme4)
+library(rmarkdown)
+library(stringr)
+library(plotly)
+library(xlsx)
+library(Hmisc)
+sem <- function(x) {sd(x, na.rm=T) / sqrt(length(x))}
+render_this <- function(){rmarkdown::render('Transitivity_OpenAnalyses.Rmd', output_dir = '/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/', html_notebook(toc = T, toc_float = T, code_folding = 'hide'))}
+options(scipen = 1, digits = 4)
+```
+
+Load workspace
+
+```{r}
+load("/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/Transitivity_OpenDataOrganizationWS052817.RData")
+```
+
+Group differences in intransitivies
+--------------------------------------------------------
+
+### Summary Statistics
+
+```{r}
+both.Intransitive %>%
+  group_by(Task, Group) %>%
+  summarise(mean_CleanIntr = mean(CleanIntr),
+            median_CleanIntr = median(CleanIntr),
+            sd_CleanIntr = sd(CleanIntr),
+            mean_CleanPercentIntr = mean(CleanPercentIntr),
+            median_CleanPercentIntr = median(CleanPercentIntr),
+            sd_CleanPercentIntr = sd(CleanPercentIntr))
+```
+
+```{r}
+both.Intransitive %>% 
+  group_by(Task, Group) %>% 
+  summarise(MeanCleanPercentIntr = mean(CleanPercentIntr, na.rm=T),
+            SeCleanPercentIntr = sem(CleanPercentIntr),
+            eb.low = MeanCleanPercentIntr - SeCleanPercentIntr,
+            eb.high = MeanCleanPercentIntr + SeCleanPercentIntr) %>%
+ggplot(aes(x = Group, y=MeanCleanPercentIntr, group = Task))+
+  geom_point(aes(shape = Task))+
+  geom_line(aes(linetype = Task))+
+  geom_errorbar(aes(ymax = eb.high, ymin=eb.low), width=0.25)+
+  ylab("Mean Percentage of Intransitivities")+
+  xlab("")+
+  theme_bw()+
+  theme(axis.title.y = element_text(face="bold", size = 14),
+        axis.text.x  = element_text(face="bold", size = 14),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14))+
+  scale_shape_discrete(breaks = c("choice", "numbers"),
+                       labels = c("Value-based", "Numbers"))+
+  scale_linetype_discrete(breaks = c("choice", "numbers"),
+                          labels = c("Value-based", "Numbers"))
+```
+
+
+```{r warning=FALSE, message=FALSE}
+ggsave("/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/CleanFigure2.png", width=6, height=4, dpi=300)
+```
+
+Looking at the plot we are interested in whether the difference between the two lines is the same for all groups. In other words: Is there a significant intereaction between task and group, i.e. is the effect of changing the task same for the MTL group as it is for the control groups.
+
+To choose the correct model that would check for statistical differences between the groups we checked the assumptions for each possibility. Though all methods yield essentially the same answer we chose to use a linear mixed model with orthogonal contrasts because it was the most appropriate method. 
+
+The first thing we could do would be a one-way ANOVA for both tasks checking whether the main dependent measure (percentage of intransitivities) differs depending on the group and task. The distribution of effect sizes within tasks, however, is not normal for either task, which is why this would not be an appropriate test. 
+
+```{r message=FALSE} 
+both.Intransitive %>%
+  ggplot(aes(CleanPercentIntr, fill=Group))+
+  geom_histogram(position="identity", alpha=0.5)+
+  theme_bw()+
+  xlab("Percentage of intransitivity")+
+  facet_wrap(~Task)
+```  
+
+
+```{r}
+shapiro.test(both.Intransitive[both.Intransitive$Task == "numbers",]$CleanPercentIntr)
+```
+
+```{r}
+shapiro.test(both.Intransitive[both.Intransitive$Task == "choice",]$CleanPercentIntr)
+```
+
+To solve this we could try a non-parametric test (e.g. Kruskall-Wallis) but this wouldn't allow us to check the interaction of group by task and more importantly the variance in the effect size distributions are unequal. That is, as the Bartlett test below and the plot above shows variance in effect size is not independent of task.
+
+```{r message=FALSE}
+bartlett.test(CleanPercentIntr ~ Task, data = both.Intransitive)
+```
+
+To deal with this issue of task dependence of the variance we log transform the effect sizes.
+
+```{r}
+bartlett.test(log(CleanPercentIntr + 1) ~ Task, data = both.Intransitive)
+```
+
+Using transformed dependent variables we first confirm that the interactive model is the best fitting model by comparing it to nested simpler models.
+
+```{r}
+gm1a <- lm(log(CleanPercentIntr+1) ~ Task, both.Intransitive)#; summary(gm1a)
+gm1b <- lm(log(CleanPercentIntr+1) ~ Group, both.Intransitive)# ; summary(gm1b)
+gm2 <- lm(log(CleanPercentIntr+1) ~ Group+Task, both.Intransitive)# ; summary(gm2)
+gm3 <- lm(log(CleanPercentIntr+1) ~ Group*Task, both.Intransitive)# ; summary(gm3)
+```
+
+```{r}
+anova(gm1a, gm2, gm3)
+```
+
+```{r}
+anova(gm1b, gm2, gm3)
+```
+
+```{r echo=FALSE}
+rm(gm1a, gm1b, gm2)
+```
+
+So what does this interactive model say? To get a better understanding of this we first look at the contrasts used in this model.
+
+```{r}
+contrasts(both.Intransitive$Task)
+```
+
+```{r}
+contrasts(both.Intransitive$Group)
+```
+
+Based on these contrasts the group differences in this model compare both patient groups to the healthy control alone. Accordingly the parameters of the linear model would have the following interpretations.
+
+```{r}
+summary(gm3)
+```
+
+b0 = mean percentage of intransitivity for both tasks for the C group is >0 (not interesting)
+b1 = ETL group doesn't make significantly more intrans in CHOICE task! (good) - simple effect
+b2 = MTL group DOES make sig more intrans in CHOICE task! (good) - simple effect
+b3 = C group makes sig less intrans in NUMBERS task! (not surprising, easy task)
+b4 = Is the effect of task in ETL group same as C. Yes.
+b5 = Is the effect of task in MTL group same as C. Marginally no. 
+
+As mentioned above, however, these are not orthogonal contrasts and are comparing both groups to Healthy controls only! But we are interested in comparing the MTL group to both control groups. To answer this question and to avoid overlapping variance we orthogonalize the contrasts. This would results in first comparing the ETL group to the C group and then the MTL group to BOTH CONTROL GROUPS!
+
+```{r}
+#Change the contrasts, make them orthogonal
+both.Intransitive.contrast <- both.Intransitive
+contrasts(both.Intransitive.contrast$Group) <- cbind(c(-1,1, 0), c(-1, -1, 2))
+contrasts(both.Intransitive.contrast$Task) <- c(-1, 1)
+
+gm3.con <- lm(log(CleanPercentIntr+1) ~ Group*Task, both.Intransitive.contrast) 
+summary(gm3.con)
+```
+
+What does the model say now:
+
+b0 = Unweighted grand mean (mean of group means) (sum(aggregate(CleanPercentIntr ~ Group, both.Intransitive.contrast, mean)[,2])/3)
+b1 = Total group effect for ETL compared to healthy controls only (quantified)
+b2 = Total group effect for MTL compared to both control groups (quantified)
+b3 = Total task effect
+b4 = Is the effect of task change same for ETL and C groups? (yes.)
+b5 = Is the effect of task change same for MTL vs both control groups? (No!)
+
+Since there are two measures per subject we check if a mixed model necessary comparing the log-likelihoods of a model with random effects to one without them. We find that that a model with random effects is indeed significantly better fit to data.
+
+```{r}
+gm3.lmer.con <- lmerTest::lmer(log(CleanPercentIntr+1) ~ Group*Task + (1|f.id), both.Intransitive.contrast, REML = F)
+
+x2 = -2*logLik(gm3.con) +2*logLik(gm3.lmer.con)
+x2
+pchisq(x2, df=1, lower.tail=F)
+```
+
+
+```{r}
+summary(gm3.lmer.con) 
+```
+
+The linear mixed model with orthogonal contrasts is the most appropriate analysis and reveals a significant group task interaction in the percentage of intransitivities. Accordingly the MTL group had a higher percentage of intransitivities in the choice task than the numbers task compared to both control groups, while the difference between the percentage of intransitivities did not differ between tasks between the health controls and the ETL group.
+
+Lesion size and intransitivies
+--------------------------------------------------------
+
+```{r}
+symmetry.data <- read.xlsx("/Users/zeynepenkavi/Dropbox/CDSPart1/Transitivity/TransitivityData/Symmetry_index_zeynep.xlsx", 1)
+
+symmetry.data = both.Intransitive %>%
+  filter(Task == 'choice') %>%
+  mutate(ID = as.numeric(as.character(f.id))) %>%
+  right_join(symmetry.data, by= 'ID') %>%
+  drop_na()
+```
+
+Spearman correlation between instransitivity percentage and lesion size
+
+```{r}
+cor(symmetry.data$Symmetry.index, symmetry.data$CleanPercentIntr, method = "spearman")
+```
+
+Significance test for the Spearman correlation
+
+```{r}
+spearman.test(symmetry.data$Symmetry.index, symmetry.data$CleanPercentIntr)
+```
+
+Plot of correlation between 
+
+```{r}
+ggplot(symmetry.data, aes(Symmetry.index, CleanPercentIntr))+
+  geom_point()+
+  geom_smooth(method = 'loess', span = 2, color = "black", alpha = 0.1, linetype = "dashed")+
+  theme_bw()+
+  ylab("Percentage of Intransitve Choice")+
+  xlab("Compromised Hippocampal Ratio")+
+  theme(axis.title.y = element_text(face="bold", size = 14),
+        axis.title.x  = element_text(face="bold", size = 14),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14))
+```
+
+
+```{r}
+ggsave("/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/CleanFigure3.png", width=4, height=4, dpi=300)
+
+```
+
+Simulations
+------------------------------------------------------
+
+
+
+Alternative explanations of intransitivity
+------------------------------------------------------
+
+One alternative explanation of the higher level of intransitivities in the MTL group is about episodic memory deficits. Accordingly, the MTL group might be showing higher rates of intransitivity because they are unable to recall choices they have made earlier in the task. This hypothesis would predict a pattern of proportion of intransitive triplets each trial was involved in that increases towards the end of the task (the later the trial the more intransitive triplets it was involved in). The figure below shows the empirical change of intransitive triplet involvement with trial number.
+
+```{r}
+mem_df = both.Intransitive %>%
+  filter(Task == "choice") %>%
+  select(f.id, CleanIntr) %>%
+  right_join(choice2.trial.data, by="f.id") %>%
+  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
+  filter(RT>0&RT<6000)
+
+mem_df %>%
+  # ggplot(aes(x = Trialnumber, y = IntransTripleCounted, group = Group, color = Group))+
+  ggplot(aes(x = Trialnumber, y = PropInIntransTriplet, group = Group, color = Group))+
+  geom_smooth(method = "loess", span=5) +
+  theme_bw()+
+  ylab("Prorportion of Times a Choice was \n involved in an Intransitive Triplet") +
+  xlab("Order choice was made")
+```
+
+To test if there are any statistical differences both between the groups and throughout the task we first compare three models where the proportion of intransitive triplets a trial is involved is regressed over the trial number and experimental group. The first model is additive, the second interactive and the third includes a quadratic effect of trial number as well. Model comparison shows that the addition of the interaction terms and the quadratic effect do not lead to significant improvements in fit. Thus we report the effects in the simplest additive model.
+
+```{r}
+mem1=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)+Group, data=mem_df)
+
+mem2=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)*Group, data=mem_df)
+
+mem3=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)*scale(c.TrialQuad)*Group, data=mem_df)
+
+anova(mem1, mem2, mem3)
+```
+
+The additive model suggests that contrary to the prediction of an episodic memory during the task account there is both no change in the proportion of intransitive triplets a trial in involved in throughout the task and this is true for the MTL group as well.
+
+```{r}
+summary(mem1)
+```
+
+```{r echo=FALSE}
+rm(mem_df)
+```
+
+Response Times
+------------------------------------------------------
+
+### Intransitivities and response times
+
+Trials with longer response times are involed in a higher proportion of intransitive triplets. For a speed-accuracy trade-off explanation you would expect the opposite pattern (that faster trials are involved in more intransitive triplets).
+
+```{r message=FALSE, warning=FALSE}
+both.Intransitive %>%
+  filter(Task == "choice") %>%
+  select(f.id, CleanIntr) %>%
+  right_join(choice2.trial.data, by="f.id") %>%
+  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
+  filter(RT>0&RT<6000) %>%
+  ggplot(aes(RT, PropInIntransTriplet, group=Group, color=Group))+
+  theme_bw()+
+  geom_smooth(method = "loess", span = 5)+
+  ylim(c(0,NA))+
+  xlab("Response Time")+
+  ylab("Percent of intransitive Triplets involved")
+```
+
+Model for above figure regressing percent of intransitive triplets over response times. First checking if quadratic effect of response times is necessary.
+
+```{r warning=FALSE, message=FALSE}
+RT.df = both.Intransitive %>%
+  filter(Task == "choice") %>%
+  select(f.id, CleanIntr) %>%
+  right_join(choice2.trial.data, by="f.id") %>%
+  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
+  filter(RT>0&RT<6000) %>% #Trials are supposed to be 6 seconds long
+  mutate(RT.quad = RT^2,
+         RT.c = RT - mean(RT),
+         RT.quad.c = RT.quad - mean(RT.quad))
+
+rt = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) + Group + (1|f.id), data=RT.df)
+
+rt1 = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) * Group + (1|f.id), data=RT.df)
+
+rt2 = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) * Group + scale(RT.quad.c) * Group + (1|f.id), data=RT.df)
+
+anova(rt, rt1, rt2)
+
+```
+
+```{r echo=FALSE}
+rm(rt, rt1)
+```
+
+Model comparison suggests that the addition of the quadratic effect leads to significant improvement. So what this model suggest?
+
+```{r}
+summary(rt2)
+```
+
+The model suggests that there is a significant positive linear effect of response times on the proportion of intransitive triplets a trial is involved it. This linear trend doesn't differ between the control and the MTL groups. Interesting the ETL groups shows a quadratic effect of time where trials longer than about 3 seconds are associated with fewer intransitivities.
+
+### Response times for groups
+
+```{r}
+choice2.trial.data$Task <- "choice"
+numbers.trial.data$Task <- "numbers"
+
+RT.df <- rbind(choice2.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")], numbers.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")])
+RT.df$Task <- factor(RT.df$Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual"))
+
+ggplot(data = RT.df[RT.df$RT>0,], aes(x = Trialnumber, y = RT, group = Group, linetype = Group))+
+  geom_smooth(method = "lm", color = "black")+
+  theme_bw()+
+  facet_grid(~Task)+
+  xlab("Trial number")+
+  ylab("Response time")
+
+```
+
+```{r}
+RT.df %>%
+  filter(RT>0) %>%
+  group_by(Group, Task) %>%
+  summarise(mean_RT = mean(RT),
+            sd_RT = sd(RT),
+            median_RT = median(RT))
+```
+
+Full model for above graph. Not run because too long.
+
+```{r eval=FALSE}
+rt.lmer1 <- lmerTest::lmer(scale(RT) ~ Group*Task*scale(Trialnumber) + (1|f.id), data = RT.df[RT.df$RT>0,])
+
+summary(rt.lmer1)
+```
+
+```{r echo=FALSE}
+rm(RT.df)
+```
+
+Group differences response times (reported)
+
+```{r}
+summary(lmerTest::lmer(scale(RT) ~ Group + (1|f.id), data = choice2.trial.data[choice2.trial.data$RT>0,]))
+```
+
+Idiosyncratic stimulus effects
+------------------------------------------------------
+
+```{r}
+id.df = choice2.trial.data %>%
+  select(IntransTripleCounted, Image_right, Image_left, f.id) %>%
+  gather(key, value, -IntransTripleCounted, -f.id) %>%
+  group_by(f.id,value) %>%
+  summarise(sum_Intrans = sum(IntransTripleCounted))
+
+summary(aov(sum_Intrans ~ factor(value) + Error(f.id/value), data = id.df))
+#For exact values
+# str(summary(aov(sum_Intrans ~ factor(value) + Error(f.id/value), data = id.df)))
+```
+
+```{r echo=FALSE}
+rm(id.df)
+```
+
+

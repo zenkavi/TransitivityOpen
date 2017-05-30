@@ -1,0 +1,743 @@
+---
+title: 'Hippocampal dependence of value-based decisions: Data organization'
+output:
+github_document:
+toc: yes
+toc_float: yes
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(lme4)
+library(rmarkdown)
+library(stringr)
+library(plotly)
+sem <- function(x) {sd(x, na.rm=T) / sqrt(length(x))}
+render_this <- function(){rmarkdown::render('Transitivity_OpenDataOrganization.Rmd', output_dir = '/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/', html_notebook(toc = T, toc_float = T, code_folding = 'hide'))}
+options(scipen = 1, digits = 4)
+```
+
+### Read numbers task data in:
+
+```{r message=FALSE, warning=FALSE}
+
+numbers.Data <- read.csv("/Users/zeynepenkavi/Dropbox/cdspart1/Transitivity/TransitivityData/complete_data_numbers_new.csv", col.names = c("Trialnumber", "Image_left", "Image_right", "RT", "Choice_1right_4left", "SubjectID", "Group"), header=F)
+
+TrialNumber <- read.csv("/Users/zeynepenkavi/Dropbox/cdspart1/Transitivity/TransitivityData/TrialNumbers.csv")
+```
+
+```{r}
+numbers.Data
+```
+
+### Organize Data 
+
+First column: trial number (starting from 0)
+Second column: stimulus number for the stim on the left  
+Third column: stimulus number for the stim on the left
+Fourth column: reaction time (-1 = no response)  
+Fifth: response (-1: no response; 1 right is bigger, 4: left is bigger)   
+Sixth: subject ID  
+Seventh: patient group 1:MTL, 2: ETL, 3 Control  
+
+Trial numbers start from 0. Fix by adding 1.
+
+```{r}
+numbers.Data$Trialnumber <- numbers.Data$Trialnumber+1
+```
+
+#### Code choice
+
+```{r eval = FALSE}
+table(numbers.Data$Choice_1right_4left)
+```
+
+In addition to correct choice buttons (1 and 4) there are missed trials (-1) and trials where the wrong button was pressed. Since the wrong button presses were either 3 or 5 they are coded as 4 (left). Missed trials are coded as NA.
+
+```{r}
+
+numbers.Data$Choice <- ifelse(numbers.Data$Choice_1right_4left == 1, "right",
+                              ifelse(numbers.Data$Choice_1right_4left == 4, "left",
+                                     ifelse(numbers.Data$Choice_1right_4left == 3, "left", ifelse(numbers.Data$Choice_1right_4left == 5, "left", NA))))
+
+table(numbers.Data$Choice, useNA  = "ifany")
+```
+
+
+```{r}
+numbers.Data$Choice.image <- ifelse(numbers.Data$Choice == "right", numbers.Data$Image_right, ifelse(numbers.Data$Choice == "left", numbers.Data$Image_left, NA))
+
+table(numbers.Data$Choice.image, useNA  = "ifany")
+
+```
+
+```{r}
+numbers.Data$Choice.left1.right0 <- ifelse(numbers.Data$Choice == "left", 1, ifelse(numbers.Data$Choice == "right", 0, NA))
+
+table(numbers.Data$Choice.left1.right0, useNA  = "ifany")
+```
+
+#### Assign groups
+
+```{r warning=FALSE, message=FALSE}
+table(numbers.Data$Group)/190
+
+numbers.Data$Group <- ifelse(numbers.Data$Group == 1, "MTL", 
+                ifelse(numbers.Data$Group == 2, "ETL","C"))
+```
+
+#### Factorize id's
+
+```{r warning=FALSE, message=FALSE}
+numbers.Data$f.id <- as.factor(numbers.Data$SubjectID)
+```
+
+#### Create unique identifier for each pair (Paste variable)
+
+```{r warning=FALSE, message=FALSE}
+#This is old/ugly code but works fine so won't improve it for now
+TrialNumber$Image_right <- ifelse(TrialNumber$Image_right <10, paste0(0,as.character(TrialNumber$Image_right)), TrialNumber$Image_right)
+TrialNumber$Image_left <- ifelse(TrialNumber$Image_left <10, paste0(0,as.character(TrialNumber$Image_left)), TrialNumber$Image_left)
+TrialNumber$Paste <- paste0(TrialNumber$Image_right, TrialNumber$Image_left)
+
+numbers.Data$Image_right <- ifelse(numbers.Data$Image_right <10, paste0(0,as.character(numbers.Data$Image_right)), numbers.Data$Image_right)
+numbers.Data$Image_left <- ifelse(numbers.Data$Image_left <10, paste0(0,as.character(numbers.Data$Image_left)), numbers.Data$Image_left)
+numbers.Data$Paste <- paste0(numbers.Data$Image_right, numbers.Data$Image_left)
+
+numbers.Data2 <-  read.csv("/Users/zeynepenkavi/Dropbox/CDSPart1/Transitivity//TransitivityData/complete_data_numbers_new.csv", col.names = c("Trialnumber", "Image_left", "Image_right", "RT", "Choice_1right_4left", "SubjectID", "Group"), header=F)
+numbers.Data$Image_right <- numbers.Data2$Image_right
+numbers.Data$Image_left <- numbers.Data2$Image_left
+rm(numbers.Data2)
+
+numbers.Data = numbers.Data %>% 
+  left_join(TrialNumber[,c("Trial", "Paste")], by="Paste")
+
+numbers.Data
+```
+
+#### Create Error df with counts of number of trials subjects mispressed or timed out
+
+This will be merged with the Intransitive df with individual intransitivity counts later. 
+
+Note: Mispress doesn't include timeout trials.
+
+```{r}
+#Creates df with subject id in col 1 and number of timed out trials in col 2
+numbers.TimeOut <- as.data.frame(table(numbers.Data[which(numbers.Data$RT<0), "SubjectID"]))
+
+#Creates df with subject id in col 1 and number of mispressed trials in col 2
+numbers.MisPress <- as.data.frame(table(numbers.Data[which(numbers.Data$Choice_1right_4left != 1 & numbers.Data$Choice_1right_4left != 4 & numbers.Data$Choice_1right_4left != (-1)), "SubjectID"]))
+
+#Creates df with subject id in col 1 and number of both kinds of errors in col 2
+numbers.EitherError <- as.data.frame(table(numbers.Data[which(numbers.Data$RT <0 | (numbers.Data$Choice_1right_4left != 1 & numbers.Data$Choice_1right_4left != 4 & numbers.Data$Choice_1right_4left != (-1))), "SubjectID"]))
+
+#Merge above three dfs to get numbers of all errors
+numbers.Error <- merge(numbers.MisPress, numbers.TimeOut, by="Var1", all = T)
+numbers.Error <- merge(numbers.Error, numbers.EitherError, by="Var1", all = T)
+names(numbers.Error) <- c("f.id", "MisPress", "TimeOut", "EitherError")
+rm(numbers.TimeOut, numbers.MisPress, numbers.EitherError)
+#TO BE MERGED TO INTRANSITIVE DF LATER
+
+```
+
+### Count intransitive choices
+
+#### Create temp df where intransitive choices will be counted by creating the 1140 triplets possible out of 20 options (C(20,3) = 1140)
+
+```{r}
+comb <- t(combn(unique(numbers.Data$Image_left),3))
+comb <- as.data.frame(comb)
+names(comb) <- c("A", "B", "C")
+comb = comb %>% 
+  mutate(id = 1:nrow(comb))
+```
+
+#### Group data by subjects 
+
+#### Function 1: Check intransitivity on one row of comb (in one triplet)
+
+Output: Record choice, intransitivity, TimeOut, MisPress, EitherError, TimeOut+intransitivity, MissPress+intransitivity, EitherError+intransitivity, trial number for each pair, last trial of triplet, pair identifier in one row
+
+```{r}
+comb.row.fn <- function (df, comb.row) {
+  # INPUT 
+  #   df: individual participants data
+  #   comb.row: comb data frame split by row
+  j <- which((df$Image_left == comb.row$A | df$Image_right == comb.row$A) &
+               (df$Image_left == comb.row$B | df$Image_right == comb.row$B))
+  #Record choice for A vs B
+  ApreftoB <- ifelse(df$Choice.image[j] == comb.row$A, 1, 0)
+  #Record if the trial was TimeOut (i.e. timed out)
+  TimeOutApreftoB <- ifelse(df$RT[j] < 0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressApreftoB <- ifelse(df$Choice_1right_4left[j] != 1 & df$Choice_1right_4left[j] != 4 & df$Choice_1right_4left[j] != (-1) , 1, 0)
+  #Find trial row in df that has the B vs C choice in comb
+  k <- which((df$Image_left == comb.row$B | df$Image_right == comb.row$B) &
+               (df$Image_left == comb.row$C | df$Image_right == comb.row$C))
+  #Record choice for B vs C
+  BpreftoC <- ifelse(df$Choice.image[k] == comb.row$B, 1, 0)
+  #Record if the trial was TimeOutor (i.e. timed out)
+  TimeOutBpreftoC <- ifelse(df$RT[k] <0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressBpreftoC <- ifelse(df$Choice_1right_4left[k] != 1 & df$Choice_1right_4left[k] != 4 & df$Choice_1right_4left[k] != (-1), 1, 0)
+  #Find trial row in df that has the A vs C choice in comb
+  l <- which((df$Image_left == comb.row$A | df$Image_right == comb.row$A) &
+               (df$Image_left == comb.row$C | df$Image_right == comb.row$C))
+  #Record choice for A vs C
+  CpreftoA <- ifelse(df$Choice.image[l] == comb.row$C, 1, 0)
+  #Record if the trial was TimeOutor (i.e. timed out)
+  TimeOutCpreftoA <- ifelse(df$RT[l] <0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressCpreftoA <- ifelse(df$Choice_1right_4left[l] != 1 & df$Choice_1right_4left[l] != 4 & df$Choice_1right_4left[l] != (-1) , 1, 0)
+  #A triplet is intransitive if either A>B, B>C and C>A OR A<B, B<C and C<A (the second is the reverse) #Changed on 9/18/14 to assign NA whenever there is NA in choice (which would be the case if timeout is coded so)
+  Intrans <- ifelse (ApreftoB == 1 & BpreftoC == 1 & CpreftoA == 1, 1, 
+                     ifelse(ApreftoB == 0 & BpreftoC == 0 & CpreftoA == 0, 1, 
+                            ifelse(is.na(ApreftoB) == T | is.na(BpreftoC) == T | is.na(CpreftoA) == T, NA,0)))
+  #A triplet involves a TimeOut if any of the three trials involved has timed out
+  TimeOut <- ifelse(TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1, 1, 0)
+  #A triplet involves a MisPress if any of the three trials were mispressed
+  MisPress <- ifelse(MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1, 1, 0)
+    #A triplet involves an Error if any of the three trials were timed out or mispressed
+  Error <- ifelse(TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1| MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1, 1, 0)
+  #Mark triplets where there is both an TimeOut and an intransitivity
+  #TimeOutIntrans <- ifelse((TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1) & Intrans==1, 1, 0)
+    #Mark triplets where there is both an MisPress and an intransitivity
+  MisPressIntrans <- ifelse((MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1) & Intrans==1, 1, 0)
+    #Mark triplets where there is both an TimeOut or Mispress and an intransitivity
+  ErrorIntrans <- ifelse((TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1 | MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1) & Intrans==1, 1, 0)
+  TrialA <- df$Trialnumber[j]
+  TrialB <- df$Trialnumber[k]
+  TrialC <- df$Trialnumber[l]
+  ThirdTrial <- max(TrialA, TrialB, TrialC)
+  PasteA <- df$Paste[j]
+  PasteB <- df$Paste[k]
+  PasteC <- df$Paste[l]
+  # setup data to return
+  ret.dat <- data.frame(A = comb.row$A, 
+                        B = comb.row$B,
+                        C = comb.row$C,
+                        ApreftoB = ApreftoB,
+                        BpreftoC = BpreftoC,
+                        CpreftoA = CpreftoA,
+                        Intrans = Intrans,
+                        TimeOutApreftoB = TimeOutApreftoB,
+                        TimeOutBpreftoC = TimeOutBpreftoC,
+                        TimeOutCpreftoA = TimeOutCpreftoA,
+                        TimeOut = TimeOut,
+                        MisPressApreftoB = MisPressApreftoB,
+                        MisPressBpreftoC = MisPressBpreftoC,
+                        MisPressCpreftoA = MisPressCpreftoA,
+                        MisPress = MisPress,
+                        MisPressIntrans = MisPressIntrans,
+                        Error = Error,
+                        ErrorIntrans = ErrorIntrans,
+                        TrialA = TrialA,
+                        TrialB = TrialB,
+                        TrialC = TrialC,
+                        ThirdTrial = ThirdTrial,
+                        PasteA = PasteA,
+                        PasteB = PasteB,
+                        PasteC = PasteC)
+  return(ret.dat)
+}
+```
+
+Note: Considered coding Mispresses like timeouts where they don't factor in to the intransitivity calculation at all but unlike timeouts where we have no guess on preference we do make a guess for the mispress trials so it made more sense to me to keep track of them instead.
+
+#### Function 2: Apply function 1 (row level intransitivity calculation) to subset of data including all triplets for one participant
+
+```{r}
+comb.fn <- function(subject.data, comb){
+  comb %>%
+    group_by(id) %>%
+    do(comb.row.fn(df = subject.data,.))
+}
+  
+```
+
+#### Count intransitivities for all subjects [takes time ~ 6 min]
+
+Combine intransitivity calculation for all participant by applying to subject level calculation to all participants  
+Output: 1140*number of subject rows recording with output of comb.row.fn function
+
+```{r warning=FALSE, message=FALSE}
+numbers.all <- numbers.Data %>%
+  group_by(f.id, Group) %>%
+  do(comb.fn(., comb))
+```
+
+#### Subject level: Summarize triplet level intransitivity on subject level 
+
+Output: nrow = number of subjects  
+Note TimeOut, MisPress and Error are large (not matching the Error df) because they are the number of triplets (not trials!) that involve one OR MORE of these errors (so not triple counting)
+
+```{r}
+numbers.Intransitive  = numbers.all %>% 
+  group_by(f.id, Group) %>%
+  summarise(Intrans = sum(Intrans, na.rm=T),
+             TimeOutTriplets = sum(TimeOut, na.rm=T),
+             MisPressTriplets = sum(MisPress),
+             ErrorTriplets = sum(Error, na.rm=T),
+             #TimeOutIntransTriplets = sum(TimeOutIntrans),
+             MisPressIntransTriplets = sum(MisPressIntrans, na.rm=T),
+             ErrorIntransTriplets = sum(ErrorIntrans, na.rm=T))
+```
+
+#### Subject level: Assign number of missed trials from the Error df to the correct subject in Intrans df
+
+```{r}
+# Create additional subject level variables and calculations of percentages
+numbers.Intransitive$TimeOutTrials <- NA
+numbers.Intransitive$MisPressTrials <- NA
+numbers.Intransitive$EitherErrorTrials <- NA
+
+#Assign number of missed trials from the Error df to the correct subject in Intrans df
+for (i in 1:nrow(numbers.Error)){
+  j <- which(as.character(numbers.Intransitive$f.id) == as.character(numbers.Error$f.id[i]))
+  numbers.Intransitive$TimeOutTrials[j] <- numbers.Error$TimeOut[i]
+  numbers.Intransitive$MisPressTrials[j] <- numbers.Error$MisPress[i]
+  numbers.Intransitive$EitherErrorTrials[j] <- numbers.Error$EitherError[i]
+}
+
+rm(i, j)
+
+#Or give 0 if there are no missed trials
+numbers.Intransitive$TimeOutTrials <- ifelse(is.na(numbers.Intransitive$TimeOutTrials) == T, 0, numbers.Intransitive$TimeOutTrials)
+numbers.Intransitive$MisPressTrials <- ifelse(is.na(numbers.Intransitive$MisPressTrials) == T, 0, numbers.Intransitive$MisPressTrials)
+numbers.Intransitive$EitherErrorTrials <- ifelse(is.na(numbers.Intransitive$EitherErrorTrials) == T, 0, numbers.Intransitive$EitherErrorTrials)
+```
+
+#### Subject level: Calculate percentages of intransitivities and timed out/mispressed trials
+
+```{r}
+numbers.Intransitive = numbers.Intransitive %>%
+  mutate(PercentTimeOutTrials = TimeOutTrials/190*100,
+         PercentMisPressTrials = MisPressTrials/190*100,
+         PercentEitherErrorTrials = EitherErrorTrials/190*100,
+         PercentTimeOutTriplets = TimeOutTriplets/1140*100, 
+         PercentMisPressTriplets = MisPressTriplets/1140*100,
+         PercentEitherErrorTriplets = ErrorTriplets/1140*100,
+         PIntrError = ErrorIntransTriplets/Intrans *100,
+         CleanTriplets = 1140 - ErrorTriplets) %>%
+  mutate(PIntrError = ifelse(is.na(PIntrError), 0, PIntrError),
+         CleanIntr  = Intrans - ErrorIntransTriplets) %>%
+  mutate(CleanPercentIntr = CleanIntr/CleanTriplets *100)
+```
+
+#### Trial level: Create pair level intransitivity count
+
+**Merge Intransitivity info with rest of trial level data**
+
+```{r}
+numbers.all.data = numbers.all %>%
+  select(f.id, Group, Intrans, MisPress, MisPressIntrans, Error, ErrorIntrans, TrialA, TrialB, TrialC) %>%
+  gather(key, value, -f.id, -Group, -Intrans, -MisPress, -MisPressIntrans, -Error, -ErrorIntrans) %>%
+  arrange(f.id, value) %>%
+  group_by(f.id, Group, value) %>%
+  summarise(IntransTripleCounted = sum(Intrans, na.rm=T), 
+            MisPressTripleCounted = sum(MisPress, na.rm=T), 
+            MisPressIntransTripleCounted = sum(MisPressIntrans, na.rm=T), 
+            ErrorTripleCounted = sum(Error, na.rm=T), 
+            ErrorIntrans = sum(ErrorIntrans, na.rm=T)) %>%
+  rename(Trialnumber=value) %>%
+  right_join(numbers.Data, by = c("f.id", "Group", "Trialnumber")) 
+```
+
+#### Trial level: Create centered trial number and quadratic trial term
+
+```{r}
+numbers.all.data = numbers.all.data %>%
+  mutate(c.Trialnumber = Trialnumber - mean(Trialnumber),
+         c.TrialQuad = c.Trialnumber^2)
+```
+
+#### Trial level: Create df counting how many times each trial was the last trial (C>A) leading to intransitivity
+
+```{r}
+
+Trialnumber.df <- as.data.frame(table(numbers.all$ThirdTrial, numbers.all$Intrans, numbers.all$f.id))
+
+numbers.all.data = Trialnumber.df %>%
+  rename(Trialnumber = Var1,
+         Intrans = Var2,
+         f.id = Var3,
+         TimesThirdInIntrans = Freq) %>%
+  filter(Intrans == 1) %>%
+  mutate(Trialnumber = as.numeric(as.character(Trialnumber)),
+         Intrans = as.numeric(as.character(Intrans))) %>%
+  select(-Intrans) %>%
+  right_join(numbers.all.data, by = c("Trialnumber", "f.id")) %>%
+  mutate(TimesThirdInIntrans = ifelse(is.na(TimesThirdInIntrans), 0, TimesThirdInIntrans))
+```
+
+REPEAT SAME CLEANING OF TIMEOUTS FOR CHOICE DATA
+-----------------------------------------------------------------
+
+### Read choice2 task data in:
+
+```{r message=FALSE, warning=FALSE}
+choice2.Data <- read.csv("/Users/zeynepenkavi/Dropbox/CDSPart1/Transitivity/TransitivityData/complete_data.csv")
+```
+
+### Organize Data 
+
+#### Code choice
+
+In addition to correct choice buttons (1 and 4) there are missed trials (-1) and trials where the wrong button was pressed. Since the wrong button presses were either 3 or 5 they are coded as 4 (left).
+
+```{r}
+table(choice2.Data$Choice_1left_4right)
+```
+
+```{r}
+#Make sure TimeOut trials are coded correctly (as -1) for choice (this only seems to be a problem for one single trial (4) for one subject (3574), probably a csv error?) 
+
+choice2.Data$Choice_1left_4right <- ifelse(choice2.Data$RT<0, (-1), choice2.Data$Choice_1left_4right) 
+
+#Notice change of one trial from 1 to -1 in table
+table(choice2.Data$Choice_1left_4right)
+```
+
+```{r}
+choice2.Data$Choice <- ifelse(choice2.Data$Choice_1left_4right == 1, "left",
+                              ifelse(choice2.Data$Choice_1left_4right == 4, "right",
+                                     ifelse(choice2.Data$Choice_1left_4right == 2, "left", ifelse(choice2.Data$Choice_1left_4right == 3, "right", ifelse(choice2.Data$Choice_1left_4right == 5, "right", NA)))))
+
+table(choice2.Data$Choice, useNA  = "ifany")
+
+```
+
+```{r}
+choice2.Data$Choice.image <- ifelse(choice2.Data$Choice == "right", choice2.Data$Image_right, ifelse(choice2.Data$Choice == "left", choice2.Data$Image_left, NA))
+
+table(choice2.Data$Choice.image, useNA  = "ifany")
+```
+
+```{r}
+choice2.Data$Choice.left1.right0 <- ifelse(choice2.Data$Choice == "left", 1, ifelse(choice2.Data$Choice == "right", 0, NA))
+
+table(choice2.Data$Choice.left1.right0, useNA  = "ifany")
+```
+
+#### Assign groups
+
+```{r}
+table(choice2.Data$Group)/190
+
+choice2.Data$Group <- ifelse(choice2.Data$Group == 1, "MTL", 
+                ifelse(choice2.Data$Group == 2, "ETL","C"))
+```
+
+#### Factorize id's
+
+```{r}
+choice2.Data$f.id <- as.factor(choice2.Data$SubjectID)
+```
+
+#### Create unique identifier for each pair (Paste variable)
+
+```{r}
+choice2.Data$Image_right <- ifelse(choice2.Data$Image_right <10, paste0(0,as.character(choice2.Data$Image_right)), choice2.Data$Image_right)
+choice2.Data$Image_left <- ifelse(choice2.Data$Image_left <10, paste0(0,as.character(choice2.Data$Image_left)), choice2.Data$Image_left)
+choice2.Data$Paste <- paste0(choice2.Data$Image_right, choice2.Data$Image_left)
+
+choice2.Data2 <-  read.csv("/Users/zeynepenkavi/Dropbox/CDSPart1/Transitivity//TransitivityData/complete_data.csv")
+choice2.Data$Image_right <- choice2.Data2$Image_right
+choice2.Data$Image_left <- choice2.Data2$Image_left
+rm(choice2.Data2)
+
+choice2.Data = choice2.Data %>% 
+  left_join(TrialNumber[,c("Trial", "Paste")], by="Paste")
+
+choice2.Data
+```
+
+#### Create Error df with counts of number of trials subjects mispressed or timed out
+
+This will be merged with the Intransitive df with individual intransitivity counts later. 
+
+Note: Mispress doesn't include timeout trials.
+
+```{r}
+#Creates df with subject id in col 1 and number of timed out trials in col 2
+choice2.TimeOut <- as.data.frame(table(choice2.Data[which(choice2.Data$RT<0), "SubjectID"]))
+
+#Creates df with subject id in col 1 and number of mispressed trials in col 2
+choice2.MisPress <- as.data.frame(table(choice2.Data[which(choice2.Data$Choice_1left_4right != 1 & choice2.Data$Choice_1left_4right != 4 & choice2.Data$Choice_1left_4right != (-1)), "SubjectID"]))
+
+#Creates df with subject id in col 1 and number of both kinds of errors in col 2
+choice2.EitherError <- as.data.frame(table(choice2.Data[which(choice2.Data$RT <0 | (choice2.Data$Choice_1left_4right != 1 & choice2.Data$Choice_1left_4right != 4 & choice2.Data$Choice_1left_4right != (-1))), "SubjectID"]))
+
+#Merge above three dfs to get choice2 of all errors
+choice2.Error <- merge(choice2.MisPress, choice2.TimeOut, by="Var1", all = T)
+choice2.Error <- merge(choice2.Error, choice2.EitherError, by="Var1", all = T)
+names(choice2.Error) <- c("f.id", "MisPress", "TimeOut", "EitherError")
+rm(choice2.TimeOut, choice2.MisPress, choice2.EitherError)
+#TO BE MERGED TO INTRANSITIVE DF LATER
+
+```
+
+### Count intransitive choices
+
+#### Create temp df where intransitive choices will be counted by creating the 1140 triplets possible out of 20 options (C(20,3) = 1140)
+
+```{r eval=FALSE}
+comb <- t(combn(unique(choice2.Data$Image_left),3))
+comb <- as.data.frame(comb)
+names(comb) <- c("A", "B", "C")
+comb = comb %>% 
+  mutate(id = 1:nrow(comb))
+```
+
+#### Group data by subjects 
+
+#### Function 1: Check intransitivity on one row of comb (in one triplet)
+
+Output: Record choice, intransitivity, TimeOut, MisPress, EitherError, TimeOut+intransitivity, MissPress+intransitivity, EitherError+intransitivity, trial number for each pair, last trial of triplet, pair identifier in one row
+
+```{r}
+comb.row.fn <- function (df, comb.row) {
+  # INPUT 
+  #   df: individual participants data
+  #   comb.row: comb data frame split by row
+  j <- which((df$Image_left == comb.row$A | df$Image_right == comb.row$A) &
+               (df$Image_left == comb.row$B | df$Image_right == comb.row$B))
+  #Record choice for A vs B
+  ApreftoB <- ifelse(df$Choice.image[j] == comb.row$A, 1, 0)
+  #Record if the trial was TimeOut (i.e. timed out)
+  TimeOutApreftoB <- ifelse(df$RT[j] < 0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressApreftoB <- ifelse(df$Choice_1left_4right[j] != 1 & df$Choice_1left_4right[j] != 4 & df$Choice_1left_4right[j] != (-1) , 1, 0)
+  #Find trial row in df that has the B vs C choice in comb
+  k <- which((df$Image_left == comb.row$B | df$Image_right == comb.row$B) &
+               (df$Image_left == comb.row$C | df$Image_right == comb.row$C))
+  #Record choice for B vs C
+  BpreftoC <- ifelse(df$Choice.image[k] == comb.row$B, 1, 0)
+  #Record if the trial was TimeOutor (i.e. timed out)
+  TimeOutBpreftoC <- ifelse(df$RT[k] <0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressBpreftoC <- ifelse(df$Choice_1left_4right[k] != 1 & df$Choice_1left_4right[k] != 4 & df$Choice_1left_4right[k] != (-1), 1, 0)
+  #Find trial row in df that has the A vs C choice in comb
+  l <- which((df$Image_left == comb.row$A | df$Image_right == comb.row$A) &
+               (df$Image_left == comb.row$C | df$Image_right == comb.row$C))
+  #Record choice for A vs C
+  CpreftoA <- ifelse(df$Choice.image[l] == comb.row$C, 1, 0)
+  #Record if the trial was TimeOutor (i.e. timed out)
+  TimeOutCpreftoA <- ifelse(df$RT[l] <0 , 1, 0)
+  #Record if the trial was MisPressed
+  MisPressCpreftoA <- ifelse(df$Choice_1left_4right[l] != 1 & df$Choice_1left_4right[l] != 4 & df$Choice_1left_4right[l] != (-1) , 1, 0)
+  #A triplet is intransitive if either A>B, B>C and C>A OR A<B, B<C and C<A (the second is the reverse) #Changed on 9/18/14 to assign NA whenever there is NA in choice (which would be the case if timeout is coded so)
+  Intrans <- ifelse (ApreftoB == 1 & BpreftoC == 1 & CpreftoA == 1, 1, 
+                     ifelse(ApreftoB == 0 & BpreftoC == 0 & CpreftoA == 0, 1, 
+                            ifelse(is.na(ApreftoB) == T | is.na(BpreftoC) == T | is.na(CpreftoA) == T, NA,0)))
+  #A triplet involves a TimeOut if any of the three trials involved has timed out
+  TimeOut <- ifelse(TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1, 1, 0)
+  #A triplet involves a MisPress if any of the three trials were mispressed
+  MisPress <- ifelse(MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1, 1, 0)
+    #A triplet involves an Error if any of the three trials were timed out or mispressed
+  Error <- ifelse(TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1| MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1, 1, 0)
+  #Mark triplets where there is both an TimeOut and an intransitivity
+  #TimeOutIntrans <- ifelse((TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1) & Intrans==1, 1, 0)
+    #Mark triplets where there is both an MisPress and an intransitivity
+  MisPressIntrans <- ifelse((MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1) & Intrans==1, 1, 0)
+    #Mark triplets where there is both an TimeOut or Mispress and an intransitivity
+  ErrorIntrans <- ifelse((TimeOutApreftoB == 1 | TimeOutBpreftoC == 1 | TimeOutCpreftoA == 1 | MisPressApreftoB == 1 | MisPressBpreftoC == 1 | MisPressCpreftoA == 1) & Intrans==1, 1, 0)
+  TrialA <- df$Trialnumber[j]
+  TrialB <- df$Trialnumber[k]
+  TrialC <- df$Trialnumber[l]
+  ThirdTrial <- max(TrialA, TrialB, TrialC)
+  PasteA <- df$Paste[j]
+  PasteB <- df$Paste[k]
+  PasteC <- df$Paste[l]
+  # setup data to return
+  ret.dat <- data.frame(A = comb.row$A, 
+                        B = comb.row$B,
+                        C = comb.row$C,
+                        ApreftoB = ApreftoB,
+                        BpreftoC = BpreftoC,
+                        CpreftoA = CpreftoA,
+                        Intrans = Intrans,
+                        TimeOutApreftoB = TimeOutApreftoB,
+                        TimeOutBpreftoC = TimeOutBpreftoC,
+                        TimeOutCpreftoA = TimeOutCpreftoA,
+                        TimeOut = TimeOut,
+                        #TimeOutIntrans = TimeOutIntrans,
+                        MisPressApreftoB = MisPressApreftoB,
+                        MisPressBpreftoC = MisPressBpreftoC,
+                        MisPressCpreftoA = MisPressCpreftoA,
+                        MisPress = MisPress,
+                        MisPressIntrans = MisPressIntrans,
+                        Error = Error,
+                        ErrorIntrans = ErrorIntrans,
+                        TrialA = TrialA,
+                        TrialB = TrialB,
+                        TrialC = TrialC,
+                        ThirdTrial = ThirdTrial,
+                        PasteA = PasteA,
+                        PasteB = PasteB,
+                        PasteC = PasteC)
+  return(ret.dat)
+}
+```
+
+#### Create continuous triplet variable 
+
+#### Function 2: Apply function 1 (row level intransitivity calculation) to subset of data including all triplets for one participant
+
+```{r}
+comb.fn <- function(subject.data, comb){
+  comb %>%
+    group_by(id) %>%
+    do(comb.row.fn(df = subject.data,.))
+}
+```
+
+#### Count intransitivities for all subjects [takes time ~ 6 min]
+
+Combine intransitivity calculation for all participant by applying to subject level calculation to all participants  
+Output: 1140*number of subject rows recording with output of comb.row.fn function
+
+```{r message=FALSE, warning=FALSE}
+choice2.all <- choice2.Data %>%
+  group_by(f.id, Group) %>%
+  do(comb.fn(., comb))
+```
+
+#### Subject level: Summarize triplet level intransitivity on subject level 
+
+Output: nrow = number of subjects  
+Note TimeOut, MisPress and Error are large choice2 (not matching the Error df) because they are the number of triplets (not trials!) that involve one OR MORE of these errors (so not triple counting)
+
+```{r}
+choice2.Intransitive <- choice2.all %>% 
+  group_by(f.id, Group) %>% 
+  summarise(Intrans = sum(Intrans, na.rm=T),
+             TimeOutTriplets = sum(TimeOut, na.rm=T),
+             MisPressTriplets = sum(MisPress),
+             ErrorTriplets = sum(Error, na.rm=T),
+             MisPressIntransTriplets = sum(MisPressIntrans, na.rm=T),
+             ErrorIntransTriplets = sum(ErrorIntrans, na.rm=T))
+```
+
+#### Subject level: Assign number of missed trials from the Error df to the correct subject in Intrans df
+
+```{r}
+# Create additional subject level variables and calculations of percentages
+choice2.Intransitive$TimeOutTrials <- NA
+choice2.Intransitive$MisPressTrials <- NA
+choice2.Intransitive$EitherErrorTrials <- NA
+
+#Assign number of missed trials from the Error df to the correct subject in Intrans df
+for (i in 1:nrow(choice2.Error)){
+  j <- which(as.character(choice2.Intransitive$f.id) == as.character(choice2.Error$f.id[i]))
+  choice2.Intransitive$TimeOutTrials[j] <- choice2.Error$TimeOut[i]
+  choice2.Intransitive$MisPressTrials[j] <- choice2.Error$MisPress[i]
+  choice2.Intransitive$EitherErrorTrials[j] <- choice2.Error$EitherError[i]
+}
+
+rm(i, j)
+
+#Or give 0 if there are no missed trials
+choice2.Intransitive$TimeOutTrials <- ifelse(is.na(choice2.Intransitive$TimeOutTrials) == T, 0, choice2.Intransitive$TimeOutTrials)
+choice2.Intransitive$MisPressTrials <- ifelse(is.na(choice2.Intransitive$MisPressTrials) == T, 0, choice2.Intransitive$MisPressTrials)
+choice2.Intransitive$EitherErrorTrials <- ifelse(is.na(choice2.Intransitive$EitherErrorTrials) == T, 0, choice2.Intransitive$EitherErrorTrials)
+```
+
+#### Subject level: Calculate percentages of intransitivities and timed out/mispressed trials
+
+```{r}
+choice2.Intransitive = choice2.Intransitive %>%
+  mutate(PercentTimeOutTrials = TimeOutTrials/190*100,
+         PercentMisPressTrials = MisPressTrials/190*100,
+         PercentEitherErrorTrials = EitherErrorTrials/190*100,
+         PercentTimeOutTriplets = TimeOutTriplets/1140*100, 
+         PercentMisPressTriplets = MisPressTriplets/1140*100,
+         PercentEitherErrorTriplets = ErrorTriplets/1140*100,
+         PIntrError = ErrorIntransTriplets/Intrans *100,
+         CleanTriplets = 1140 - ErrorTriplets) %>%
+  mutate(PIntrError = ifelse(is.na(PIntrError), 0, PIntrError),
+         CleanIntr  = Intrans - ErrorIntransTriplets) %>%
+  mutate(CleanPercentIntr = CleanIntr/CleanTriplets *100)
+```
+
+#### Trial level: Create pair level intransitivity count
+
+```{r}
+choice2.all.data = choice2.all %>%
+  select(f.id, Group, Intrans, MisPress, MisPressIntrans, Error, ErrorIntrans, TrialA, TrialB, TrialC) %>%
+  gather(key, value, -f.id, -Group, -Intrans, -MisPress, -MisPressIntrans, -Error, -ErrorIntrans) %>%
+  arrange(f.id, value) %>%
+  group_by(f.id, Group, value) %>%
+  summarise(IntransTripleCounted = sum(Intrans, na.rm=T), 
+            MisPressTripleCounted = sum(MisPress, na.rm=T), 
+            MisPressIntransTripleCounted = sum(MisPressIntrans, na.rm=T), 
+            ErrorTripleCounted = sum(Error, na.rm=T), 
+            ErrorIntrans = sum(ErrorIntrans, na.rm=T)) %>%
+  rename(Trialnumber=value) %>%
+  right_join(choice2.Data, by = c("f.id", "Group", "Trialnumber")) 
+```
+
+#### Trial level: Create centered trial number and quadratic trial term
+
+```{r}
+choice2.all.data = choice2.all.data %>% 
+  mutate(c.Trialnumber = Trialnumber - mean(Trialnumber),
+         c.TrialQuad = c.Trialnumber^2)
+```
+
+#### Trial level: Create df counting how many times each trial was the last trial (C>A) leading to intransitivity
+
+```{r}
+Trialnumber.df <- as.data.frame(table(choice2.all$ThirdTrial, choice2.all$Intrans, choice2.all$f.id))
+
+choice2.all.data = Trialnumber.df %>%
+  rename(Trialnumber = Var1,
+         Intrans = Var2,
+         f.id = Var3,
+         TimesThirdInIntrans = Freq) %>%
+  filter(Intrans == 1) %>%
+  mutate(Trialnumber = as.numeric(as.character(Trialnumber)),
+         Intrans = as.numeric(as.character(Intrans))) %>%
+  select(-Intrans) %>%
+  right_join(choice2.all.data, by = c("Trialnumber", "f.id")) %>%
+  mutate(TimesThirdInIntrans = ifelse(is.na(TimesThirdInIntrans), 0, TimesThirdInIntrans))
+```
+
+CLEAN UP and SAVE WORKSPACE
+-----------------------------------------------------------
+
+```{r}
+#Clean workspace
+rm(choice2.Error, numbers.Error, TrialNumber, Trialnumber.df, comb, comb.fn, comb.row.fn, choice2.Data, numbers.Data)
+
+#Merge two tasks
+numbers.Intransitive$Task <- "numbers"
+choice2.Intransitive$Task <- "choice"
+both.Intransitive <- rbind(numbers.Intransitive, choice2.Intransitive)
+rm(numbers.Intransitive, choice2.Intransitive)
+
+numbers.all$Task <- "numbers"
+choice2.all$Task <- "choice"
+both.triplet.data <- rbind(numbers.all, choice2.all)
+rm(numbers.all, choice2.all)
+
+#Rename trial level data and remove redundant df's
+numbers.trial.data <- numbers.all.data
+choice2.trial.data <- choice2.all.data
+rm(numbers.all.data, choice2.all.data)
+
+#Organize merged df's
+both.Intransitive$Group <- as.factor(both.Intransitive$Group)
+both.Intransitive$Task <- as.factor(both.Intransitive$Task)
+
+
+both.triplet.data$Group <- as.factor(both.triplet.data$Group)
+names(both.triplet.data)[which(names(both.triplet.data) == "id")] <- "triplet.id"
+both.triplet.data$Task <- as.factor(both.triplet.data$Task)
+
+#Save workspace
+# save.image('/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/Transitivity_OpenDataOrganizationWS052817.RData')
+```
