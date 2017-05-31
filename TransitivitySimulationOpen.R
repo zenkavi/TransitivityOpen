@@ -10,8 +10,8 @@ if (length(args)<4) {
   stop("Arguments are missing. Usage: Rscript --vanilla TransitivitySimulationOpen.R n noise output_dir choice_type", call.=FALSE)
 }
 
-n <- args[1]
-noise <- args[2]
+n <- as.numeric(args[1])
+noise <- as.numeric(args[2])
 output_dir <- args[3]
 choice_type <- args[4]
 
@@ -20,6 +20,7 @@ choice_type <- args[4]
 #Setup
 ####################
 
+#.libPaths( c( .libPaths(), "/Library/Frameworks/R.framework/Versions/3.3/Resources/library/") )
 library(dplyr)
 
 # setwd()
@@ -98,7 +99,7 @@ create.new.data <- function(){
 #Create choices based on values adding noise for n number of subjects
 #noise levels: 0.01, 0.05, 0.10, 0.25, 0.50
 # simulate.choice <- function(n, alpha){
-simulate.choice <- function(alpha){  
+simulate.choice <- function(alpha, choice_type){  
   # new.data <- plyr::ldply(as.data.frame(replicate(n, create.new.data())),data.frame)
   new.data <- create.new.data()
   
@@ -132,12 +133,12 @@ simulate.choice <- function(alpha){
 #Simulate
 ####################
 
-output_df = data.frame(pct_Intrans = unlist(replicate(n, comb.fn.sim(simulate.choice(noise)) %>% summarise(pct_Intrans = sum(Intrans)/1140*100))))
+output_df = data.frame(pct_Intrans = unlist(replicate(n, comb.fn.sim(simulate.choice(noise, choice_type)) %>% ungroup()%>% summarise(pct_Intrans = sum(Intrans)/1140*100))))
 
 ####################
 #Save output
 ####################
 
-write.csv(output_df, paste0(output_dir,"sim_n_",n,"_noise_",noise, "_choice_", choice_type.csv))
+write.csv(output_df, paste0(output_dir,"/sim_n_",n,"_noise_",noise, "_choice_", choice_type, ".csv"))
 
 
