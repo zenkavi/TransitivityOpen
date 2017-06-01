@@ -266,7 +266,8 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
   theme_bw()+
   geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
   ylab("Percentage of Intransivity")+
-  xlab("Noise level")
+  xlab("Noise level")+
+  ggtitle("Results of simulation using hardmax")
 ```
 
 ```{r}
@@ -287,7 +288,32 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
   theme_bw()+
   geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
   ylab("Percentage of Intransivity")+
-  xlab("Noise level")
+  xlab("Noise level")+
+  scale_y_continuous(breaks=seq(0,25,5), limits=c(0, 26))+
+  ggtitle("Results of simulation flipping coin with noisy choice p")
+```
+
+```{r}
+fileList = list.files(path,pattern = "*_epsilon.csv")
+
+lapply(paste0(path, fileList), read_csv_fn)  %>% 
+  bind_rows() %>%
+  separate(Source, c("a", "b", "c", "d", "e", "f","g", "sim"),sep = "/") %>%
+  select(pct_Intrans, sim) %>%
+  separate(sim, c("a", "b", "c", "d", "noise", "e", "f"), sep = "_") %>%
+  select(pct_Intrans, noise) %>%
+  filter(noise %in% c(0.05, 0.25) == FALSE) %>%
+  group_by(noise) %>%
+  summarise(mean_Intrans = mean(pct_Intrans),
+            sem_Intrans = sem(pct_Intrans)) %>%
+  ggplot(aes(noise, mean_Intrans))+
+  geom_point()+
+  theme_bw()+
+  geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
+  ylab("Percentage of Intransivity")+
+  xlab("Noise level")+
+  scale_y_continuous(breaks=seq(0,25,5), limits=c(0, 26))+
+  ggtitle("Results of simulation with epsilon greedy")
 ```
 
 
