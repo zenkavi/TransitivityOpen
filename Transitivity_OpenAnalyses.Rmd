@@ -240,6 +240,55 @@ ggsave("/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/CleanFigure3.png",
 Simulations
 ------------------------------------------------------
 
+```{r}
+path = '/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/sim_output/'
+
+fileList = list.files(path,pattern = "*_hardmax.csv")
+
+read_csv_fn <- function(filename){
+    ret <- read.csv(filename)
+    ret$Source <- filename 
+    ret
+}
+
+lapply(paste0(path, fileList), read_csv_fn)  %>% 
+  bind_rows() %>%
+  separate(Source, c("a", "b", "c", "d", "e", "f","g", "sim"),sep = "/") %>%
+  select(pct_Intrans, sim) %>%
+  separate(sim, c("a", "b", "c", "d", "noise", "e", "f"), sep = "_") %>%
+  select(pct_Intrans, noise) %>%
+  filter(noise %in% c(0.05, 0.25) == FALSE) %>%
+  group_by(noise) %>%
+  summarise(mean_Intrans = mean(pct_Intrans),
+            sem_Intrans = sem(pct_Intrans)) %>%
+  ggplot(aes(noise, mean_Intrans))+
+  geom_point()+
+  theme_bw()+
+  geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
+  ylab("Percentage of Intransivity")+
+  xlab("Noise level")
+```
+
+```{r}
+fileList = list.files(path,pattern = "*_rbinom.csv")
+
+lapply(paste0(path, fileList), read_csv_fn)  %>% 
+  bind_rows() %>%
+  separate(Source, c("a", "b", "c", "d", "e", "f","g", "sim"),sep = "/") %>%
+  select(pct_Intrans, sim) %>%
+  separate(sim, c("a", "b", "c", "d", "noise", "e", "f"), sep = "_") %>%
+  select(pct_Intrans, noise) %>%
+  filter(noise %in% c(0.05, 0.25) == FALSE) %>%
+  group_by(noise) %>%
+  summarise(mean_Intrans = mean(pct_Intrans),
+            sem_Intrans = sem(pct_Intrans)) %>%
+  ggplot(aes(noise, mean_Intrans))+
+  geom_point()+
+  theme_bw()+
+  geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
+  ylab("Percentage of Intransivity")+
+  xlab("Noise level")
+```
 
 
 Alternative explanations of intransitivity

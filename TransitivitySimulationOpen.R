@@ -92,6 +92,7 @@ create.new.data <- function(){
   noise.right <- rnorm(190, 0, 1)
   noise.left <-  rnorm(190, 0, 1)
   new.data <- as.data.frame(cbind(t(combn(values,2)), t(combn(images,2)), noise.right, noise.left))
+  names(new.data) <- c("Value_left", "Value_right", "Image_left", "Image_right", "noise.left", "noise.right")
   return(new.data)
 }
 
@@ -100,12 +101,8 @@ create.new.data <- function(){
 #noise levels: 0.01, 0.05, 0.10, 0.25, 0.50
 # simulate.choice <- function(n, alpha){
 simulate.choice <- function(alpha, choice_type){  
-  # new.data <- plyr::ldply(as.data.frame(replicate(n, create.new.data())),data.frame)
   new.data <- create.new.data()
-  
-  # names(new.data) <- c("f.id", "Value_left", "Value_right", "Image_left", "Image_right", "noise.left", "noise.right")
-  names(new.data) <- c("Value_left", "Value_right", "Image_left", "Image_right", "noise.left", "noise.right")
-  
+
   new.data$Choice.left.P <- 1/(1+exp(new.data$Value_right - new.data$Value_left))
   
   new.data$Choice.left1.right0 <- round(new.data$Choice.left.P)
@@ -125,7 +122,24 @@ simulate.choice <- function(alpha, choice_type){
   else if(choice_type == "rbinom"){
     new.data$Choice.image <- ifelse(new.data$Choice.left1.right0.rbinom == 1, new.data$Image_left, new.data$Image_right)
   }
-  
+  else if(choice_type == 'epsilon'){
+    
+    #flip coin w p=epsilon to determine state
+    new.data$ep_state = rbinom(190,1,alpha)
+    
+    new.data$value_winner = ifelse(new.data$Value_left - new.data$Value_right>0, 1, 0)
+    
+    #if true (epsilon state) then randomly choose between the two
+    #if false (1-epsilon state) hardmax; choose with the one with the heighest value
+    for(i in 1:nrow(new.data)){
+      
+      new.data$Choice.left1.right0.epsilon[i] <- ifelse(new.data$ep_state[i], rbinom(1,1,0.5), new.data$value_winner[i])
+    }
+    
+    new.data$Choice.image <- ifelse(new.data$Choice.left1.right0.epsilon == 1, new.data$Image_left, new.data$Image_right)
+    
+  }
+
   return(new.data)
 }
 
