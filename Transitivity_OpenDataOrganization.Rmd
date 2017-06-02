@@ -16,9 +16,12 @@ library(rmarkdown)
 library(stringr)
 library(plotly)
 sem <- function(x) {sd(x, na.rm=T) / sqrt(length(x))}
-render_this <- function(){rmarkdown::render('Transitivity_OpenDataOrganization.Rmd', output_dir = '/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/', html_notebook(toc = T, toc_float = T, code_folding = 'hide'))}
+render_this <- function(){rmarkdown::render('Transitivity_OpenDataOrganization.Rmd', output_dir = '/Users/zeynepenkavi/Dropbox/CDSPart1/TransitivityOpen/', html_notebook(toc = T, toc_float = T))}
 options(scipen = 1, digits = 4)
 ```
+
+Numbers task data organization
+-----------------------------------------------------------------
 
 ### Read numbers task data in:
 
@@ -373,7 +376,7 @@ numbers.all.data = Trialnumber.df %>%
   mutate(TimesThirdInIntrans = ifelse(is.na(TimesThirdInIntrans), 0, TimesThirdInIntrans))
 ```
 
-REPEAT SAME CLEANING OF TIMEOUTS FOR CHOICE DATA
+Choice task data organization
 -----------------------------------------------------------------
 
 ### Read choice2 task data in:
@@ -706,7 +709,7 @@ choice2.all.data = Trialnumber.df %>%
   mutate(TimesThirdInIntrans = ifelse(is.na(TimesThirdInIntrans), 0, TimesThirdInIntrans))
 ```
 
-CLEAN UP and SAVE WORKSPACE
+Clean up and save workspace
 -----------------------------------------------------------
 
 ```{r}
