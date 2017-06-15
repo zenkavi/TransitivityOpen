@@ -266,8 +266,8 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
   theme_bw()+
   geom_errorbar(aes(ymin = mean_Intrans-sem_Intrans, ymax = mean_Intrans+sem_Intrans), width=0.25)+
   ylab("Percentage of Intransivity")+
-  xlab("Noise level")+
-  ggtitle("Results of simulation using hardmax")
+  xlab("Noise level")#+
+  # ggtitle("Results of simulation using hardmax")
 ```
 
 ```{r}
@@ -316,129 +316,128 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
   ggtitle("Results of simulation with epsilon greedy")
 ```
 
-
 Alternative explanations of intransitivity
 ------------------------------------------------------
 
 One alternative explanation of the higher level of intransitivities in the MTL group is about episodic memory deficits. Accordingly, the MTL group might be showing higher rates of intransitivity because they are unable to recall choices they have made earlier in the task. This hypothesis would predict a pattern of proportion of intransitive triplets each trial was involved in that increases towards the end of the task (the later the trial the more intransitive triplets it was involved in). The figure below shows the empirical change of intransitive triplet involvement with trial number.
 
-```{r}
-mem_df = both.Intransitive %>%
-  filter(Task == "choice") %>%
-  select(f.id, CleanIntr) %>%
-  right_join(choice2.trial.data, by="f.id") %>%
-  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
-  filter(RT>0&RT<6000)
+```{r warning=FALSE, message=FALSE}
+choice2.trial.data$Task <- "choice"
+numbers.trial.data$Task <- "numbers"
 
-mem_df %>%
-  # ggplot(aes(x = Trialnumber, y = IntransTripleCounted, group = Group, color = Group))+
+both.trial.data <- rbind(choice2.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")], numbers.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")])
+
+both.trial.data = both.Intransitive %>%
+  select(f.id, CleanIntr, Task) %>%
+  right_join(both.trial.data, by=c("f.id", "Task")) %>%
+  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100,
+         Task = factor(Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual")))%>%
+  filter(RT>0, RT<6000)
+```
+
+Note that most of the trials are not involved in any intransitivities so the averaged proportion of intransitivities for each trial number is pretty small (i.e why the y-axis is so small). 
+
+```{r warning=FALSE, message = FALSE}
+both.trial.data %>%
   ggplot(aes(x = Trialnumber, y = PropInIntransTriplet, group = Group, color = Group))+
   geom_smooth(method = "loess", span=5) +
   theme_bw()+
-  ylab("Prorportion of Times a Choice was \n involved in an Intransitive Triplet") +
+  facet_grid(~Task)+
+  ylab("Percent of intransitive Triplets involved") +
   xlab("Order choice was made")
 ```
 
-To test if there are any statistical differences both between the groups and throughout the task we first compare three models where the proportion of intransitive triplets a trial is involved is regressed over the trial number and experimental group. The first model is additive, the second interactive and the third includes a quadratic effect of trial number as well. Model comparison shows that the addition of the interaction terms and the quadratic effect do not lead to significant improvements in fit. Thus we report the effects in the simplest additive model.
+To test if there are any statistical differences both between the groups and throughout each task and between the two tasks we first compare three models where the proportion of intransitive triplets a trial is involved is regressed over the trial number and experimental group. The first model is additive, the second interactive and the third includes a quadratic effect of trial number as well. Model comparison shows that the addition of the interaction terms and the quadratic effect do not lead to significant improvements in fit. Thus we report the effects in the simplest additive model.
 
-```{r}
-mem1=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)+Group, data=mem_df)
+```{r warning=FALSE, message=FALSE}
+mem1 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(Trialnumber)+Group*Task, both.trial.data)
 
-mem2=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)*Group, data=mem_df)
+#adding interaction of linear effect of RT between tasks and groups
+mem2 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(Trialnumber)*Group*Task, both.trial.data)
 
-mem3=lmerTest::lmer(PropInIntransTriplet ~ (1|f.id) + scale(c.Trialnumber)*scale(c.TrialQuad)*Group, data=mem_df)
+#adding the quadratic effect
+mem3 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(poly(Trialnumber,2))*Task*Group, both.trial.data)
 
 anova(mem1, mem2, mem3)
 ```
 
-The additive model suggests that contrary to the prediction of an episodic memory during the task account there is both no change in the proportion of intransitive triplets a trial in involved in throughout the task and this is true for the MTL group as well.
+```{r echo=FALSE}
+rm(mem2, mem3)
+```
+
+The additive model suggests that contrary to the prediction of an episodic memory during the task account there is both no change in the proportion of intransitive triplets a trial in involved in throughout the task and this is true for all groups in both tasks.
 
 ```{r}
 summary(mem1)
 ```
 
-```{r echo=FALSE}
-rm(mem_df)
-```
-
 Response Times
 ------------------------------------------------------
 
-### Intransitivities and response times
+### Intransitivities and response times (speed-accuracy tradeoff)
 
-Trials with longer response times are involed in a higher proportion of intransitive triplets. For a speed-accuracy trade-off explanation you would expect the opposite pattern (that faster trials are involved in more intransitive triplets).
+The y-axis is the proportion of intransitive triplets a trial is involved in. The higher lines for the numbers task might be confusing at first look given the few number of intransitivities in this task. It is because there are so few intransitivities that if a trial is involved in even a single intransitivity it translates to a larger proportions. The lower number if intransitivities for the numbers task is captured by the large error bars around the task (i.e. for each response time there are fewer non-zero data points involved in intransitivities compared to the choice task).
 
-```{r message=FALSE, warning=FALSE}
-both.Intransitive %>%
-  filter(Task == "choice") %>%
-  select(f.id, CleanIntr) %>%
-  right_join(choice2.trial.data, by="f.id") %>%
-  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
-  filter(RT>0&RT<6000) %>%
+```{r message = FALSE, warning=FALSE}
+both.trial.data %>%
   ggplot(aes(RT, PropInIntransTriplet, group=Group, color=Group))+
+  # You don't want to plot the raw measure because then a single subject who has done a lot of intransitivities and is in general faster can make it seem like faster trials are associated with more intransitivities. You want the proportional involvement given the total number of intransitivities a subject makes over response time
+  # ggplot(aes(RT, IntransTripleCounted, group=Group, color=Group))+
   theme_bw()+
   geom_smooth(method = "loess", span = 5)+
+  facet_grid(~Task)+
   ylim(c(0,NA))+
   xlab("Response Time")+
   ylab("Percent of intransitive Triplets involved")
 ```
 
-Model for above figure regressing percent of intransitive triplets over response times. First checking if quadratic effect of response times is necessary.
+Is there a statistical difference in the effect of response times on intransitivities between the two tasks?  
 
-```{r warning=FALSE, message=FALSE}
-RT.df = both.Intransitive %>%
-  filter(Task == "choice") %>%
-  select(f.id, CleanIntr) %>%
-  right_join(choice2.trial.data, by="f.id") %>%
-  mutate(PropInIntransTriplet = IntransTripleCounted/(CleanIntr*3)*100) %>%
-  filter(RT>0&RT<6000) %>% #Trials are supposed to be 6 seconds long
-  mutate(RT.quad = RT^2,
-         RT.c = RT - mean(RT),
-         RT.quad.c = RT.quad - mean(RT.quad))
+We're not necessarily interested in whether the exact slopes are different in the two tasks. We can see they might be visually. The main question of interest is two-fold:  
 
-rt = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) + Group + (1|f.id), data=RT.df)
+- Is there a speed-accuracy tradeoff? Are shorter RTs associated with more intransitivities (in a linear model: does the linear effect of RT have a negative slope)  
 
-rt1 = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) * Group + (1|f.id), data=RT.df)
+- Does this differ between groups and across the two different tasks.  
 
-rt2 = lmerTest::lmer(PropInIntransTriplet ~ scale(RT.c) * Group + scale(RT.quad.c) * Group + (1|f.id), data=RT.df)
+First we do a model comparison and check whether the three-way interactions of RTs with groups and tasks as well as a quadratic effect of RTs lead to significant imporevements. Both do.   
 
-anova(rt, rt1, rt2)
+```{r message=FALSE, warning=FALSE}
+rt1 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(RT)+Group*Task, both.trial.data)
 
+#adding interaction of linear effect of RT between tasks and groups
+rt2 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(RT)*Group*Task, both.trial.data)
+
+#adding the quadratic effect
+rt3 = lmer(PropInIntransTriplet ~ (1|f.id)+scale(poly(RT,2))*Task*Group, both.trial.data)
+
+anova(rt1, rt2, rt3)
 ```
 
 ```{r echo=FALSE}
-rm(rt, rt1)
+rm(rt1, rt2)
 ```
 
-Model comparison suggests that the addition of the quadratic effect leads to significant improvement. So what this model suggest?
+So what does this model say? There is a significant linear effect of time where longer RTs are associated with more intransitivies (the opposite of a speed-accuracy tradeoff). There is a main effect of task where the numbers task has larger proportions of intransitivities but this as mentioned above is due to the lower number intransitivities per subject. The linear and quadratic effects of time are different for the ETL group compared to the control group. The increase in the proportion of intransitivities for the MTL group is less than the increase in this proportion for the control group (this isn't interesting because the control group makes barely any intransitivities in the perceptual task). The change in the linear effect of time in the numbers task compared to the choice task is less this change for the control group (also not interesting because there is a quadratic effect of time for the ETL group and this change is not significant).  
 
-```{r}
-summary(rt2)
+As qualitatively suggested in the above figure there is no negative slopes indicating a speed accuracy tradeoff for either task. Also crucially the interactions for the significant effects of time for each group are not significant: The interaction between the linear effect time and task for the control group, the threeway interaction between the linear effect of time and task for the MTL group and the threeway interaction between the quadratic effect of time and task for the ETL group are not significant. That is, the effect of time on intransitivities is the same for both tasks.  
+
+```{r warning=FALSE, message = FALSE}
+summary(rt3)
 ```
-
-The model suggests that there is a significant positive linear effect of response times on the proportion of intransitive triplets a trial is involved it. This linear trend doesn't differ between the control and the MTL groups. Interesting the ETL groups shows a quadratic effect of time where trials longer than about 3 seconds are associated with fewer intransitivities.
 
 ### Response times for groups
 
 ```{r}
-choice2.trial.data$Task <- "choice"
-numbers.trial.data$Task <- "numbers"
-
-RT.df <- rbind(choice2.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")], numbers.trial.data[,c("f.id", "Group", "RT", "Task", "Trialnumber", "IntransTripleCounted")])
-RT.df$Task <- factor(RT.df$Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual"))
-
-ggplot(data = RT.df[RT.df$RT>0,], aes(x = Trialnumber, y = RT, group = Group, linetype = Group))+
+ggplot(data = both.trial.data, aes(x = Trialnumber, y = RT, group = Group, linetype = Group))+
   geom_smooth(method = "lm", color = "black")+
   theme_bw()+
   facet_grid(~Task)+
   xlab("Trial number")+
   ylab("Response time")
-
 ```
 
 ```{r}
-RT.df %>%
-  filter(RT>0) %>%
+both.trial.data %>%
   group_by(Group, Task) %>%
   summarise(mean_RT = mean(RT),
             sd_RT = sd(RT),
@@ -451,10 +450,6 @@ Full model for above graph. Not run because too long.
 rt.lmer1 <- lmerTest::lmer(scale(RT) ~ Group*Task*scale(Trialnumber) + (1|f.id), data = RT.df[RT.df$RT>0,])
 
 summary(rt.lmer1)
-```
-
-```{r echo=FALSE}
-rm(RT.df)
 ```
 
 Group differences response times (reported)
@@ -482,4 +477,28 @@ summary(aov(sum_Intrans ~ factor(value) + Error(f.id/value), data = id.df))
 rm(id.df)
 ```
 
+Remaining comments:
+Elke (l 233): This can only be the case for the final third triplet, no? how would the initial two pairwise choice have been made without value construction???
 
+Plot of the average number of intransitivities for each trial number that was the third/last seen pair in an intransitive triplet.
+
+```{r}
+both.triplet.data %>%
+  group_by(Task, ThirdTrial, Group) %>%
+  mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0)) %>%
+  summarise(mean_Intr = mean(CleanIntr, na.rm=T)) %>%
+  drop_na() %>%
+  arrange(Task, mean_Intr)%>%
+  ggplot(aes(ThirdTrial, mean_Intr, group=Group, color=Group))+
+  theme_bw()+
+  geom_smooth(method = "lm")+
+  # geom_smooth(method = "loess", span = 5)+
+  facet_grid(~Task)
+```
+
+```{r}
+both.triplet.data =both.triplet.data %>%
+  mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0))
+
+summary(lmer())
+```
