@@ -493,12 +493,35 @@ both.triplet.data %>%
   theme_bw()+
   geom_smooth(method = "lm")+
   # geom_smooth(method = "loess", span = 5)+
-  facet_grid(~Task)
+  facet_grid(~Task)+
+  ylab("Average number of intransitives")+
+  xlab("Trial number (when third pair in intransitive triplet)")
 ```
 
 ```{r}
-both.triplet.data =both.triplet.data %>%
+both.triplet.data = both.triplet.data %>%
   mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0))
 
-summary(lmer())
+summary(lmer(CleanIntr ~ (1|f.id)+Task*Group*ThirdTrial, both.triplet.data))
 ```
+
+```{r}
+both.triplet.data %>%
+  group_by(f.id, ThirdTrial, Group, Task) %>%
+  summarise(PIntransWhenLast= sum(CleanIntr)/n()) %>%
+  ggplot(aes(ThirdTrial, PIntransWhenLast, group=Group, color=Group))+
+  # geom_smooth(method='loess', span=5)+
+  geom_smooth(method='lm')+
+  facet_grid(~Task)+
+  theme_bw()
+  
+```
+
+```{r}
+tmp = both.triplet.data %>%
+  group_by(f.id, ThirdTrial, Group, Task) %>%
+  summarise(PIntransWhenLast= sum(CleanIntr)/n())
+
+summary(lmer(PIntransWhenLast ~ (1|f.id)+Task*Group*ThirdTrial,tmp))
+```
+
