@@ -525,3 +525,87 @@ tmp = both.triplet.data %>%
 summary(lmer(PIntransWhenLast ~ (1|f.id)+Task*Group*ThirdTrial,tmp))
 ```
 
+```{r}
+both.triplet.data %>%
+  group_by(f.id, ThirdTrial, Group, Task) %>%
+  summarise(NumTimesLast = n(),
+            IntransWhenLast = sum(CleanIntr),
+            PIntransWhenLast= sum(CleanIntr)/n()) %>%
+  arrange(Task)
+```
+
+Speed accuracy tradeoff on triplet level:
+
+```{r}
+both.triplet.data = both.triplet.data %>%
+  mutate(Task = factor(Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual"))) %>%
+  left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialA" = "Trialnumber")) %>%
+  rename(RT_A = RT) %>%
+    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialB" = "Trialnumber")) %>%
+  rename(RT_B = RT) %>%
+    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialC" = "Trialnumber")) %>%
+  rename(RT_C = RT) %>%
+  drop_na()
+```
+
+```{r}
+both.triplet.data %>%
+  select(RT_A, RT_B, RT_C, Task, CleanIntr, Group, f.id) %>%
+  gather(key, value, -Task, -CleanIntr, -f.id, -Group) %>%
+  ggplot(aes(value, CleanIntr, group=Group, color=Group))+
+  geom_smooth(method='glm')+
+  theme_bw()+
+  facet_grid(key~Task)+
+  xlab("Response time")+
+  ylab("Intransitive triplet")
+```
+
+In the linear regression I chose to look only at the effect of the response time in the third trial because:  
+- that's the trial that would determine whether a trial is intransitive or not 
+- the graph suggests that the relationship between response times and intransitive triplets is the same for the three trials
+- the response times for each trial in a triplet are higly correlated with each other
+- Note: the full interactive model with all three response times does lead to significantly improved model but becomes too uninterpretable
+
+```{r eval=FALSE}
+sa1 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C), both.triplet.data)
+sa2 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C), both.triplet.data)
+sa3 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_A)+scale(RT_B)+scale(RT_C), both.triplet.data)
+sa4 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)+scale(RT_B)+scale(RT_A), both.triplet.data)
+sa5 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
+sa6 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
+
+#need the interaction of rt_c
+anova(sa1, sa2)
+#additive with 3 rt's is better than only the third rt
+anova(sa1, sa3)
+#interactive with 3'rts is better than additive with 3 rt's
+anova(sa3, sa4)
+#for interactive do you need the main of the other two  - yes
+anova(sa2, sa4)
+#when using all three rt's is making them interactive better? - yes
+anova(sa3, sa5)
+#is the full interactive model with 3 rt's better than adding the other two rt's additively?-yes
+anova(sa4, sa6)
+#is the full interactive model with 3 rt's better than adding the rt interactions additively?-yes
+anova(sa5, sa6)
+```
+
+The model confirms that
+
+```{r}
+summary(glmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C), family = binomial(link = "logit"), both.triplet.data))
+```
+
+Correlations between response times for each trial in a triplet
+
+```{r}
+both.triplet.data %>%
+  select(Task, RT_A, RT_B, RT_C, Group, f.id) %>%
+  gather(key, value, -Task, -RT_C, -Group, -f.id) %>%
+  ggplot(aes(RT_C, value, group=Group, color=Group))+
+  geom_smooth(method="lm")+
+  theme_bw()+
+  facet_grid(key ~ Task)+
+  xlab("Response time for the third trial in the triplet")+
+  ylab("Response times for the first \n and second trials in triplet")
+```
