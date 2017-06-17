@@ -319,7 +319,7 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
 Alternative explanations of intransitivity
 ------------------------------------------------------
 
-# Episodic memory
+### Episodic memory
 
 One alternative explanation of the higher level of intransitivities in the MTL group is about episodic memory deficits. Accordingly, the MTL group might be showing higher rates of intransitivity because they are unable to recall choices they have made earlier in the task. This hypothesis would predict a pattern of proportion of intransitive triplets each trial was involved in that increases towards the end of the task (the later the trial the more intransitive triplets it was involved in). The figure below shows the empirical change of intransitive triplet involvement with trial number.
 
