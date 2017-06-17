@@ -319,6 +319,8 @@ lapply(paste0(path, fileList), read_csv_fn)  %>%
 Alternative explanations of intransitivity
 ------------------------------------------------------
 
+# Episodic memory
+
 One alternative explanation of the higher level of intransitivities in the MTL group is about episodic memory deficits. Accordingly, the MTL group might be showing higher rates of intransitivity because they are unable to recall choices they have made earlier in the task. This hypothesis would predict a pattern of proportion of intransitive triplets each trial was involved in that increases towards the end of the task (the later the trial the more intransitive triplets it was involved in). The figure below shows the empirical change of intransitive triplet involvement with trial number.
 
 ```{r warning=FALSE, message=FALSE}
@@ -370,6 +372,65 @@ The additive model suggests that contrary to the prediction of an episodic memor
 ```{r}
 summary(mem1)
 ```
+
+In her comments Elke suggested that based on the episodic memory hypothesis the episodic memory of the choices in the first two trials would only help/influence the decision for the third trial in a triplet. To address this I analyzed the episodic memory hypothesis at the triplet level. Previously we looked at the number of intransitive triplets each trial was involved in depending on when it appeared during the task. This might seem confusing because depending on when they appeared during the task each trial is not equally likely to have lead to an intransitive triplet. That is, as Elke implied not every trial was the third trial in a triplet and looking at all tasks without discriminating the order in which they appeared for a triplet masks this.  
+
+The analyses here should take care of this and indeed lead to the same conclusion but might be more intuitive. Here we look at whether a triplet is intransitive depending on when the last trial in that triplet appeared.
+
+```{r}
+both.triplet.data = both.triplet.data %>%
+   mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0)) %>%
+  mutate(Task = factor(Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual")))
+```
+
+```{r}
+both.triplet.data %>%
+  ggplot(aes(ThirdTrial, CleanIntr, group=Group, color=Group))+
+  geom_smooth(method="glm", method.args = list(family="binomial"))+
+  theme_bw()+
+  facet_grid(~Task)+
+  xlab("Last seen trial in triplet")+
+  ylab("Intransitive triplet")
+```
+
+Running model for choice task only because looking at both takes a while. The DV in these regressions is whether the triplet is intransitive and the independent variables are random effects for subjects and fixed effects for patient group and the trial number of the last seen trial in that triplet. 
+
+For the choice task there is only a fixed effect of the MTL group suggesting that this group has more intransitive triplets than the control group. The effect of the trial number of the last seen trial in a triplet on whether or not it is intransitive is not significant.
+
+```{r}
+mem_val = glmer(CleanIntr ~ (1|f.id)+Group*scale(ThirdTrial),family=binomial, both.triplet.data[both.triplet.data$Task == "Value-based",])
+summary(mem_val)
+```
+
+```{r echo=FALSE, eval=FALSE}
+# In the numbers task there is a significant effect of the last trial number on performance. Later trial numbers are more likely to be involved in intransitive triplets for the control group. The MTL group again has more intransitive triplets compared to the control group but the effect of the last seen trial does not differ from the control group. The effect of the last seen trial on performance is less pronounced for the ETL group.
+mem_per = glmer(CleanIntr ~ (1|f.id)+Group*scale(ThirdTrial),family=binomial, both.triplet.data[both.triplet.data$Task == "Perceptual",])
+summary(mem_per)
+```
+
+The episodic memory hypothesis might make a more specific hypothesis that depends not just on when each trial appears but how far apart each trial in a triplet appears from each other. Specifically, it could be the case that the further apart the trials of a triplet are the more likely they are to form an intransitive triplet because the episodic memory of the choices fade away and can't help the decision in the thirdpair. For this hypothesis to explain the group difference in intransitivities for the choice task this trend would have to be particularly pronounced for the MTL group.
+
+```{r}
+both.triplet.data %>%
+    mutate(TrialNumVar = ((TrialA-((TrialA+TrialB+TrialC)/3))^2+(TrialB-((TrialA+TrialB+TrialC)/3))^2+(TrialC-((TrialA+TrialB+TrialC)/3))^2)/2) %>%
+  ggplot(aes(TrialNumVar, CleanIntr, group=Group, color=Group))+
+  geom_smooth(method="glm", method.args = list(family="binomial"))+
+  theme_bw()+
+  facet_grid(~Task)+
+  xlab("Variance of the trial numbers involved in the triplet")+
+  ylab("Intransitive triplet")
+```
+
+Again, however, this hypothesis does not seem to explain the group difference in intransitivies in the choice task: It is the case that the further apart from each other trials in a triplet appear the more likely is that triplet intransitive but this trend is the same for all groups.
+
+```{r}
+both.triplet.data=both.triplet.data %>%
+    mutate(TrialNumVar = ((TrialA-((TrialA+TrialB+TrialC)/3))^2+(TrialB-((TrialA+TrialB+TrialC)/3))^2+(TrialC-((TrialA+TrialB+TrialC)/3))^2)/2)
+
+mem_val_var <- glmer(CleanIntr ~ (1|f.id)+Group*scale(TrialNumVar),family=binomial, both.triplet.data[both.triplet.data$Task == "Value-based",])
+summary(mem_val_var)
+```
+
 
 Response Times
 ------------------------------------------------------
@@ -425,6 +486,76 @@ As qualitatively suggested in the above figure there is no negative slopes indic
 summary(rt3)
 ```
 
+We can also analyze the speed accuracy tradeoff on triplet level by checking whether the response times to any of the three trials in each triplet is associated with whether that triplet is intransitive or not. The conclusions don't change but this analysis is more fine-grained and the dependent measure might be more interpretable.
+
+```{r}
+both.triplet.data = both.triplet.data %>%
+  left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialA" = "Trialnumber")) %>%
+  rename(RT_A = RT) %>%
+    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialB" = "Trialnumber")) %>%
+  rename(RT_B = RT) %>%
+    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialC" = "Trialnumber")) %>%
+  rename(RT_C = RT) %>%
+  drop_na()
+```
+
+```{r}
+both.triplet.data %>%
+  select(RT_A, RT_B, RT_C, Task, CleanIntr, Group, f.id) %>%
+  gather(key, value, -Task, -CleanIntr, -f.id, -Group) %>%
+  ggplot(aes(value, CleanIntr, group=Group, color=Group))+
+  geom_smooth(method = "glm", method.args = list(family = "binomial"))+
+  # geom_smooth(method = "lm")+
+  theme_bw()+
+  facet_grid(key~Task)+
+  xlab("Response time")+
+  ylab("Intransitive triplet")
+```
+
+In the linear regression I chose to look only at the effect of the response time in the third trial because:  
+- that's the trial that would determine whether a trial is intransitive or not 
+- the graph suggests that the relationship between response times and intransitive triplets is the same for the three trials
+- the response times for each trial in a triplet are [higly correlated with each othe](#rt_cor_plot)
+- Note: the full interactive model with all three response times does lead to significantly improved model but becomes too uninterpretable
+
+```{r eval=FALSE}
+#Note these should all be glmers; ran these because it was faster.
+sa1 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C), both.triplet.data)
+sa2 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C), both.triplet.data)
+sa3 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_A)+scale(RT_B)+scale(RT_C), both.triplet.data)
+sa4 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)+scale(RT_B)+scale(RT_A), both.triplet.data)
+sa5 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
+sa6 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
+
+#need the interaction of rt_c
+anova(sa1, sa2)
+#additive with 3 rt's is better than only the third rt
+anova(sa1, sa3)
+#interactive with 3'rts is better than additive with 3 rt's
+anova(sa3, sa4)
+#for interactive do you need the main of the other two  - yes
+anova(sa2, sa4)
+#when using all three rt's is making them interactive better? - yes
+anova(sa3, sa5)
+#is the full interactive model with 3 rt's better than adding the other two rt's additively?-yes
+anova(sa4, sa6)
+#is the full interactive model with 3 rt's better than adding the rt interactions additively?-yes
+anova(sa5, sa6)
+```
+
+Looking at the tasks in separate models because the interactive mode including the task takes a while to run: The model confirms that the slope is positive for all groups, suggesting that there is no speed accuracy tradeoff. In fact, we observe the opposite pattern where triplets are more likely to be intransitive if the response time for the last seen trial in that triplet is longer.
+
+```{r}
+sa_val = lme4::glmer(CleanIntr ~ (1|f.id)+Group*scale(RT_C), family = binomial, both.triplet.data[both.triplet.data$Task == 'Value-based',])
+summary(sa_val)
+```
+
+```{r eval=FALSE, echo=FALSE}
+sa_per = lme4::glmer(CleanIntr ~ (1|f.id)+Group*scale(RT_C), family = binomial, both.triplet.data[both.triplet.data$Task == 'Perceptual',])
+summary(sa_per)
+```
+
+
 ### Response times for groups
 
 ```{r}
@@ -444,9 +575,9 @@ both.trial.data %>%
             median_RT = median(RT))
 ```
 
-Full model for above graph. Not run because too long.
 
 ```{r eval=FALSE}
+# Full model for above graph. Not run because too long.
 rt.lmer1 <- lmerTest::lmer(scale(RT) ~ Group*Task*scale(Trialnumber) + (1|f.id), data = RT.df[RT.df$RT>0,])
 
 summary(rt.lmer1)
@@ -477,126 +608,10 @@ summary(aov(sum_Intrans ~ factor(value) + Error(f.id/value), data = id.df))
 rm(id.df)
 ```
 
-Remaining comments:
-Elke (l 233): This can only be the case for the final third triplet, no? how would the initial two pairwise choice have been made without value construction???
+Appendix
+------------------------------------------------------
 
-Plot of the average number of intransitivities for each trial number that was the third/last seen pair in an intransitive triplet.
-
-```{r}
-both.triplet.data %>%
-  group_by(Task, ThirdTrial, Group) %>%
-  mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0)) %>%
-  summarise(mean_Intr = mean(CleanIntr, na.rm=T)) %>%
-  drop_na() %>%
-  arrange(Task, mean_Intr)%>%
-  ggplot(aes(ThirdTrial, mean_Intr, group=Group, color=Group))+
-  theme_bw()+
-  geom_smooth(method = "lm")+
-  # geom_smooth(method = "loess", span = 5)+
-  facet_grid(~Task)+
-  ylab("Average number of intransitives")+
-  xlab("Trial number (when third pair in intransitive triplet)")
-```
-
-```{r}
-both.triplet.data = both.triplet.data %>%
-  mutate(CleanIntr = ifelse(Intrans == 1 & Error == 0,1, 0))
-
-summary(lmer(CleanIntr ~ (1|f.id)+Task*Group*ThirdTrial, both.triplet.data))
-```
-
-```{r}
-both.triplet.data %>%
-  group_by(f.id, ThirdTrial, Group, Task) %>%
-  summarise(PIntransWhenLast= sum(CleanIntr)/n()) %>%
-  ggplot(aes(ThirdTrial, PIntransWhenLast, group=Group, color=Group))+
-  # geom_smooth(method='loess', span=5)+
-  geom_smooth(method='lm')+
-  facet_grid(~Task)+
-  theme_bw()
-  
-```
-
-```{r}
-tmp = both.triplet.data %>%
-  group_by(f.id, ThirdTrial, Group, Task) %>%
-  summarise(PIntransWhenLast= sum(CleanIntr)/n())
-
-summary(lmer(PIntransWhenLast ~ (1|f.id)+Task*Group*ThirdTrial,tmp))
-```
-
-```{r}
-both.triplet.data %>%
-  group_by(f.id, ThirdTrial, Group, Task) %>%
-  summarise(NumTimesLast = n(),
-            IntransWhenLast = sum(CleanIntr),
-            PIntransWhenLast= sum(CleanIntr)/n()) %>%
-  arrange(Task)
-```
-
-Speed accuracy tradeoff on triplet level:
-
-```{r}
-both.triplet.data = both.triplet.data %>%
-  mutate(Task = factor(Task, levels = c("choice", "numbers"), labels = c("Value-based", "Perceptual"))) %>%
-  left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialA" = "Trialnumber")) %>%
-  rename(RT_A = RT) %>%
-    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialB" = "Trialnumber")) %>%
-  rename(RT_B = RT) %>%
-    left_join(both.trial.data[,c("Task", "f.id", "Trialnumber", "RT")], by = c("Task", "f.id", "TrialC" = "Trialnumber")) %>%
-  rename(RT_C = RT) %>%
-  drop_na()
-```
-
-```{r}
-both.triplet.data %>%
-  select(RT_A, RT_B, RT_C, Task, CleanIntr, Group, f.id) %>%
-  gather(key, value, -Task, -CleanIntr, -f.id, -Group) %>%
-  ggplot(aes(value, CleanIntr, group=Group, color=Group))+
-  geom_smooth(method='glm')+
-  theme_bw()+
-  facet_grid(key~Task)+
-  xlab("Response time")+
-  ylab("Intransitive triplet")
-```
-
-In the linear regression I chose to look only at the effect of the response time in the third trial because:  
-- that's the trial that would determine whether a trial is intransitive or not 
-- the graph suggests that the relationship between response times and intransitive triplets is the same for the three trials
-- the response times for each trial in a triplet are higly correlated with each other
-- Note: the full interactive model with all three response times does lead to significantly improved model but becomes too uninterpretable
-
-```{r eval=FALSE}
-sa1 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C), both.triplet.data)
-sa2 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C), both.triplet.data)
-sa3 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_A)+scale(RT_B)+scale(RT_C), both.triplet.data)
-sa4 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)+scale(RT_B)+scale(RT_A), both.triplet.data)
-sa5 = lmer(CleanIntr ~ (1|f.id)+Task*Group+scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
-sa6 = lmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C)*scale(RT_B)*scale(RT_A), both.triplet.data)
-
-#need the interaction of rt_c
-anova(sa1, sa2)
-#additive with 3 rt's is better than only the third rt
-anova(sa1, sa3)
-#interactive with 3'rts is better than additive with 3 rt's
-anova(sa3, sa4)
-#for interactive do you need the main of the other two  - yes
-anova(sa2, sa4)
-#when using all three rt's is making them interactive better? - yes
-anova(sa3, sa5)
-#is the full interactive model with 3 rt's better than adding the other two rt's additively?-yes
-anova(sa4, sa6)
-#is the full interactive model with 3 rt's better than adding the rt interactions additively?-yes
-anova(sa5, sa6)
-```
-
-The model confirms that
-
-```{r}
-summary(glmer(CleanIntr ~ (1|f.id)+Task*Group*scale(RT_C), family = binomial(link = "logit"), both.triplet.data))
-```
-
-Correlations between response times for each trial in a triplet
+<a id="rt_cor_plot"></a>Correlations between response times for each trial in a triplet
 
 ```{r}
 both.triplet.data %>%
